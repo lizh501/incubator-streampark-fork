@@ -19,11 +19,12 @@ package org.apache.streampark.flink.client.impl
 
 import org.apache.streampark.flink.client.`trait`.YarnClientTrait
 import org.apache.streampark.flink.client.bean._
+import org.apache.streampark.flink.core.YarnClusterDescriptorWrapper
 import org.apache.streampark.flink.util.FlinkUtils
 
 import org.apache.flink.client.program.PackagedProgram
 import org.apache.flink.configuration.{Configuration, DeploymentOptions}
-import org.apache.flink.yarn.{YarnClusterClientFactory, YarnClusterDescriptor}
+import org.apache.flink.yarn.YarnClusterDescriptor
 import org.apache.flink.yarn.configuration.YarnDeploymentTarget
 import org.apache.flink.yarn.entrypoint.YarnJobClusterEntrypoint
 import org.apache.hadoop.fs.{Path => HadoopPath}
@@ -62,7 +63,8 @@ object YarnPerJobClient extends YarnClientTrait {
       getYarnClusterDeployDescriptor(flinkConfig)
     val flinkDistJar = FlinkUtils.getFlinkDistJar(flinkHome)
     clusterDescriptor.setLocalJarPath(new HadoopPath(flinkDistJar))
-    clusterDescriptor.addShipFiles(List(new File(s"$flinkHome/lib")))
+    val clusterDescriptorWrapper = new YarnClusterDescriptorWrapper(clusterDescriptor)
+    clusterDescriptorWrapper.addShipFiles(List(new File(s"$flinkHome/lib")))
 
     var packagedProgram: PackagedProgram = null
     val clusterClient = {
