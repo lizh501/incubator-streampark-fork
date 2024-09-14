@@ -17,13 +17,13 @@
 
 package org.apache.streampark.console.core.service.impl;
 
+import org.apache.streampark.common.conf.Workspace;
 import org.apache.streampark.common.enums.ExecutionMode;
 import org.apache.streampark.common.util.CompletableFutureUtils;
 import org.apache.streampark.common.util.PropertiesUtils;
 import org.apache.streampark.common.util.ThreadUtils;
 import org.apache.streampark.common.util.Utils;
 import org.apache.streampark.console.base.domain.RestRequest;
-import org.apache.streampark.console.base.exception.ApiAlertException;
 import org.apache.streampark.console.base.exception.InternalException;
 import org.apache.streampark.console.base.mybatis.pager.MybatisPager;
 import org.apache.streampark.console.base.util.CommonUtils;
@@ -70,6 +70,7 @@ import java.net.URI;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Properties;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.LinkedBlockingQueue;
@@ -95,7 +96,7 @@ public class SavepointServiceImpl extends ServiceImpl<SavepointMapper, Savepoint
 
   @Autowired private FlinkAppHttpWatcher flinkAppHttpWatcher;
 
-  private static final String SAVEPOINT_DIRECTORY_NEW_KEY = "execution.checkpointing.dir";
+  private static final String SAVEPOINT_DIRECTORY_NEW_KEY = "execution.checkpointing.savepoint-dir";
 
   private static final String MAX_RETAINED_CHECKPOINTS_NEW_KEY =
       "execution.checkpointing.num-retained";
@@ -110,6 +111,7 @@ public class SavepointServiceImpl extends ServiceImpl<SavepointMapper, Savepoint
           TimeUnit.SECONDS,
           new LinkedBlockingQueue<>(),
           ThreadUtils.threadFactory("streampark-flink-savepoint-trigger"));
+  @Autowired private SavepointMapper savepointMapper;
 
   @Override
   public void expire(Long appId) {
@@ -118,13 +120,6 @@ public class SavepointServiceImpl extends ServiceImpl<SavepointMapper, Savepoint
     LambdaQueryWrapper<Savepoint> queryWrapper =
         new LambdaQueryWrapper<Savepoint>().eq(Savepoint::getAppId, appId);
     this.update(savepoint, queryWrapper);
-  }
-
-  @Override
-  public boolean save(Savepoint entity) {
-    this.expire(entity);
-    this.expire(entity.getAppId());
-    return super.save(entity);
   }
 
   private void expire(Savepoint entity) {
@@ -244,16 +239,13 @@ public class SavepointServiceImpl extends ServiceImpl<SavepointMapper, Savepoint
     Application application = applicationService.getById(appParam.getId());
 
     // 1) properties have the highest priority, read the properties are set: -Dstate.savepoints.dir
-    String savepointPath =
-        PropertiesUtils.extractDynamicPropertiesAsJava(application.getDynamicProperties())
-            .get(CheckpointingOptions.SAVEPOINT_DIRECTORY.key());
+    Map<String, String> properties =
+        PropertiesUtils.extractDynamicPropertiesAsJava(application.getDynamicProperties());
 
-    if (StringUtils.isBlank(savepointPath)) {
-      // for flink 1.20
-      savepointPath =
-          PropertiesUtils.extractDynamicPropertiesAsJava(application.getDynamicProperties())
-              .get(SAVEPOINT_DIRECTORY_NEW_KEY);
-    }
+    String savepointPath =
+        properties.getOrDefault(
+            CheckpointingOptions.SAVEPOINT_DIRECTORY.key(),
+            properties.get(SAVEPOINT_DIRECTORY_NEW_KEY));
 
     // Application conf configuration has the second priority. If it is a streampark|flinksql type
     // task,
@@ -266,11 +258,10 @@ public class SavepointServiceImpl extends ServiceImpl<SavepointMapper, Savepoint
         if (applicationConfig != null) {
           Map<String, String> map = applicationConfig.readConfig();
           if (FlinkUtils.isCheckpointEnabled(map)) {
-            savepointPath = map.get(CheckpointingOptions.SAVEPOINT_DIRECTORY.key());
-            if (StringUtils.isBlank(savepointPath)) {
-              // for flink 1.20
-              savepointPath = map.get(SAVEPOINT_DIRECTORY_NEW_KEY);
-            }
+            savepointPath =
+                map.getOrDefault(
+                    CheckpointingOptions.SAVEPOINT_DIRECTORY.key(),
+                    map.get(SAVEPOINT_DIRECTORY_NEW_KEY));
           }
         }
       }
@@ -290,11 +281,10 @@ public class SavepointServiceImpl extends ServiceImpl<SavepointMapper, Savepoint
                 application.getFlinkClusterId()));
         Map<String, String> config = cluster.getFlinkConfig();
         if (!config.isEmpty()) {
-          savepointPath = config.get(CheckpointingOptions.SAVEPOINT_DIRECTORY.key());
-          if (StringUtils.isBlank(savepointPath)) {
-            // for flink 1.20
-            savepointPath = config.get(SAVEPOINT_DIRECTORY_NEW_KEY);
-          }
+          savepointPath =
+              config.getOrDefault(
+                  CheckpointingOptions.SAVEPOINT_DIRECTORY.key(),
+                  config.get(SAVEPOINT_DIRECTORY_NEW_KEY));
         }
       }
     }
@@ -303,20 +293,41 @@ public class SavepointServiceImpl extends ServiceImpl<SavepointMapper, Savepoint
     if (StringUtils.isBlank(savepointPath)) {
       // flink
       FlinkEnv flinkEnv = flinkEnvService.getById(application.getVersionId());
+      Properties flinkConfig = flinkEnv.getFlinkConfig();
       savepointPath =
-          flinkEnv.getFlinkConfig().getProperty(CheckpointingOptions.SAVEPOINT_DIRECTORY.key());
-
-      if (StringUtils.isBlank(savepointPath)) {
-        // for flink 1.20
-        savepointPath = flinkEnv.getFlinkConfig().getProperty(SAVEPOINT_DIRECTORY_NEW_KEY);
-      }
+          flinkConfig.getProperty(
+              CheckpointingOptions.SAVEPOINT_DIRECTORY.key(),
+              flinkConfig.getProperty(SAVEPOINT_DIRECTORY_NEW_KEY));
     }
 
-    return savepointPath;
+    return processPath(savepointPath, application.getJobName(), application.getId());
   }
 
   @Override
-  public void trigger(Long appId, @Nullable String savepointPath) {
+  public String processPath(String path, String jobName, Long jobId) {
+    if (StringUtils.isNotBlank(path)) {
+      return path.replaceAll("\\$job(Id|id)", jobId.toString())
+          .replaceAll("\\$\\{job(Id|id)}", jobId.toString())
+          .replaceAll("\\$job(Name|name)", jobName)
+          .replaceAll("\\$\\{job(Name|name)}", jobName);
+    }
+    return path;
+  }
+
+  @Override
+  public boolean save(Savepoint savepoint) {
+    this.expire(savepoint);
+    this.expire(savepoint.getAppId());
+    this.cleanLatest(savepoint.getAppId());
+    return super.save(savepoint);
+  }
+
+  private void cleanLatest(Long appId) {
+    savepointMapper.cleanLatest(appId);
+  }
+
+  @Override
+  public void trigger(Long appId, @Nullable String savepointPath) throws Exception {
     log.info("Start to trigger savepoint for app {}", appId);
     Application application = applicationService.getById(appId);
 
@@ -340,6 +351,9 @@ public class SavepointServiceImpl extends ServiceImpl<SavepointMapper, Savepoint
 
     // infer savepoint
     String customSavepoint = this.getFinalSavepointDir(savepointPath, application);
+    if (StringUtils.isNotBlank(customSavepoint)) {
+      customSavepoint = processPath(customSavepoint, application.getJobName(), application.getId());
+    }
 
     FlinkCluster cluster = flinkClusterService.getById(application.getFlinkClusterId());
     String clusterId = getClusterId(application, cluster);
@@ -399,21 +413,23 @@ public class SavepointServiceImpl extends ServiceImpl<SavepointMapper, Savepoint
             });
   }
 
-  private String getFinalSavepointDir(@Nullable String savepointPath, Application application) {
+  private String getFinalSavepointDir(@Nullable String savepointPath, Application application)
+      throws Exception {
     String result = savepointPath;
-    if (StringUtils.isEmpty(savepointPath)) {
-      try {
-        result = this.getSavePointPath(application);
-      } catch (Exception e) {
-        log.error(
-            "Error in getting savepoint path for triggering savepoint for app:{}",
-            application.getId(),
-            e);
-        throw new ApiAlertException(
-            "Error in getting savepoint path for triggering savepoint for app "
-                + application.getId(),
-            e);
-      }
+    if (StringUtils.isBlank(savepointPath)) {
+      result = this.getSavePointPath(application);
+    }
+    if (StringUtils.isBlank(result)
+        || application.getExecutionModeEnum() == ExecutionMode.YARN_APPLICATION) {
+      result = Workspace.remote().APP_SAVEPOINTS();
+    }
+    if (StringUtils.isNotBlank(result)) {
+      processPath(result, application.getJobName(), application.getId());
+    } else {
+      throw new IllegalArgumentException(
+          String.format(
+              "[StreamPark] executionMode: %s, savePoint path is null or invalid.",
+              application.getExecutionModeEnum().getName()));
     }
     return result;
   }

@@ -64,7 +64,8 @@
 
   const [registerForm, { resetFields, setFieldsValue, validate }] = useForm({
     name: 'startApplicationModal',
-    labelWidth: 120,
+    layout: 'vertical',
+    baseColProps: { span: 22, offset: 1 },
     schemas: [
       {
         field: 'restoreSavepoint',
@@ -105,9 +106,6 @@
     ],
     colon: true,
     showActionButtonGroup: false,
-    labelCol: { lg: { span: 7, offset: 0 }, sm: { span: 7, offset: 0 } },
-    wrapperCol: { lg: { span: 16, offset: 0 }, sm: { span: 4, offset: 0 } },
-    baseColProps: { span: 24 },
   });
 
   async function handleSubmit() {
@@ -206,7 +204,7 @@
       {{ t('flink.app.view.start') }}
     </template>
 
-    <BasicForm @register="registerForm" class="!pt-40px">
+    <BasicForm @register="registerForm" class="!pt-20px">
       <template #savepoint="{ model, field }">
         <template
           v-if="

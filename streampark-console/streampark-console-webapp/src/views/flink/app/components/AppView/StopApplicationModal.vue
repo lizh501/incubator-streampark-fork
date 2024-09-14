@@ -43,7 +43,8 @@
   });
   const [registerForm, { resetFields, validate }] = useForm({
     name: 'stopApplicationModal',
-    labelWidth: 120,
+    layout: 'vertical',
+    baseColProps: { span: 22, offset: 1 },
     schemas: [
       {
         field: 'triggerSavepoint',
@@ -82,9 +83,6 @@
     ],
     colon: true,
     showActionButtonGroup: false,
-    labelCol: { lg: { span: 7, offset: 0 }, sm: { span: 7, offset: 0 } },
-    wrapperCol: { lg: { span: 16, offset: 0 }, sm: { span: 4, offset: 0 } },
-    baseColProps: { span: 23 },
   });
 
   /* submit */
@@ -153,6 +151,6 @@
       <SvgIcon name="shutdown" style="color: red" />
       {{ t('flink.app.view.stop') }}
     </template>
-    <BasicForm @register="registerForm" class="!pt-40px" />
+    <BasicForm @register="registerForm" class="!pt-20px" />
   </BasicModal>
 </template>

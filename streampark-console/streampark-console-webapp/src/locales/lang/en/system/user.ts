@@ -27,7 +27,7 @@ export default {
     resetSuccess: 'reset password successful, user [ {0} ] new password is streampark666',
   },
   form: {
-    userName: 'User Name',
+    userName: 'Username',
     required: 'username is required',
     min: 'username length cannot be less than 2 characters',
     max: 'exceeds maximum length limit of 20 characters',
@@ -47,6 +47,7 @@ export default {
     edit: 'Edit User',
     view: 'View User',
   },
+  searchByName: 'Search by username',
   roleInfo: 'Role Info',
   modifyTime: 'Not yet modified',
   male: 'male',

@@ -558,16 +558,7 @@ public class ApplicationServiceImpl extends ServiceImpl<ApplicationMapper, Appli
           }
 
           // 4) appControl
-          AppControl appControl =
-              new AppControl()
-                  .setAllowBuild(
-                      record.getBuildStatus() == null
-                          || !PipelineStatus.running.getCode().equals(record.getBuildStatus()))
-                  .setAllowStart(
-                      !record.shouldBeTrack()
-                          && PipelineStatus.success.getCode().equals(record.getBuildStatus()))
-                  .setAllowStop(record.isRunning());
-          record.setAppControl(appControl);
+          record.setAppControl(buildAppControl(record));
         });
 
     return page;
@@ -1264,7 +1255,19 @@ public class ApplicationServiceImpl extends ServiceImpl<ApplicationMapper, Appli
       }
     }
     application.setByHotParams();
+    application.setAppControl(buildAppControl(application));
     return application;
+  }
+
+  private AppControl buildAppControl(Application app) {
+    return new AppControl()
+        .setAllowBuild(
+            app.getBuildStatus() == null
+                || !PipelineStatus.running.getCode().equals(app.getBuildStatus()))
+        .setAllowStart(
+            !app.shouldBeTrack() && PipelineStatus.success.getCode().equals(app.getBuildStatus()))
+        .setAllowStop(app.isRunning())
+        .setAllowView(app.shouldBeTrack());
   }
 
   @Override
@@ -1306,6 +1309,7 @@ public class ApplicationServiceImpl extends ServiceImpl<ApplicationMapper, Appli
     applicationLog.setAppId(application.getId());
     applicationLog.setJobManagerUrl(application.getJobManagerUrl());
     applicationLog.setOptionTime(new Date());
+
     if (ExecutionMode.isYarnMode(application.getExecutionMode())) {
       applicationLog.setYarnAppId(application.getClusterId());
     }
@@ -1335,6 +1339,19 @@ public class ApplicationServiceImpl extends ServiceImpl<ApplicationMapper, Appli
       customSavepoint = appParam.getSavepointPath();
       if (StringUtils.isBlank(customSavepoint)) {
         customSavepoint = savepointService.getSavePointPath(appParam);
+      }
+      if (StringUtils.isBlank(customSavepoint)
+          || application.getExecutionModeEnum() == ExecutionMode.YARN_APPLICATION) {
+        customSavepoint = Workspace.remote().APP_SAVEPOINTS();
+      }
+      if (StringUtils.isNotBlank(customSavepoint)) {
+        savepointService.processPath(
+            customSavepoint, application.getJobName(), application.getId());
+      } else {
+        throw new IllegalArgumentException(
+            String.format(
+                "[StreamPark] executionMode: %s, savePoint path is null or invalid.",
+                application.getExecutionModeEnum().getName()));
       }
     }
 
@@ -1448,29 +1465,29 @@ public class ApplicationServiceImpl extends ServiceImpl<ApplicationMapper, Appli
       final String scheme = uri.getScheme();
       final String pathPart = uri.getPath();
       if (scheme == null) {
-        return "This state.savepoints.dir value "
+        return "This state savepoint dir value "
             + savepointPath
             + " scheme (hdfs://, file://, etc) of  is null. Please specify the file system scheme explicitly in the URI.";
       }
       if (pathPart == null) {
-        return "This state.savepoints.dir value "
+        return "This state savepoint dir value "
             + savepointPath
             + " path part to store the checkpoint data in is null. Please specify a directory path for the checkpoint data.";
       }
       if (pathPart.isEmpty() || "/".equals(pathPart)) {
-        return "This state.savepoints.dir value "
+        return "This state savepoint dir value "
             + savepointPath
             + " Cannot use the root directory for checkpoints.";
       }
       return null;
     } else {
-      return "When custom savepoint is not set, state.savepoints.dir needs to be set in properties or flink-conf.yaml of application";
+      return "When a custom savepoint is not set, state.savepoints.dir or execution.checkpointing.savepoint-dir needs to be configured in the properties or flink-conf.yaml of the application.";
     }
   }
 
   @Override
   public void persistMetrics(Application appParam) {
-    if (appParam.getFlinkAppStateEnum() == FlinkAppState.RUNNING) {
+    if (appParam.getState() != null && appParam.getFlinkAppStateEnum() == FlinkAppState.RUNNING) {
       appParam.setEndTime(null);
       appParam.setDuration(null);
     }
@@ -1657,7 +1674,7 @@ public class ApplicationServiceImpl extends ServiceImpl<ApplicationMapper, Appli
             application.getJobName(),
             appConf,
             application.getApplicationType(),
-            getSavepointPath(appParam),
+            getSavepointPath(appParam, application.getJobName(), application.getId()),
             applicationArgs,
             buildResult,
             extraParameter,
@@ -1874,19 +1891,20 @@ public class ApplicationServiceImpl extends ServiceImpl<ApplicationMapper, Appli
     return false;
   }
 
-  private String getSavepointPath(Application appParam) {
+  private String getSavepointPath(Application appParam, String jobName, Long jobId) {
+    String path = null;
     if (appParam.getRestoreOrTriggerSavepoint() != null
         && appParam.getRestoreOrTriggerSavepoint()) {
       if (StringUtils.isBlank(appParam.getSavepointPath())) {
         Savepoint savepoint = savepointService.getLatest(appParam.getId());
         if (savepoint != null) {
-          return savepoint.getPath();
+          path = savepoint.getPath();
         }
       } else {
-        return appParam.getSavepointPath();
+        path = appParam.getSavepointPath();
       }
     }
-    return null;
+    return savepointService.processPath(path, jobName, jobId);
   }
 
   /**

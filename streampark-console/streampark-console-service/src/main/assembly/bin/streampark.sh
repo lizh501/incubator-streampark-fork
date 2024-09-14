@@ -229,6 +229,17 @@ if ${cygwin}; then
   CLASSPATH=`cygpath --path --windows "$CLASSPATH"`
 fi
 
+# get jdk version, return version as an Integer.
+JDK_VERSION=$("$_RUNJAVA" -version 2>&1 | grep -i 'version' | head -n 1 | cut -d '"' -f 2)
+MAJOR_VER=$(echo "$JDK_VERSION" 2>&1 | cut -d '.' -f 1)
+[[ $MAJOR_VER -eq 1 ]] && MAJOR_VER=$(echo "$JDK_VERSION" 2>&1 | cut -d '.' -f 2)
+MIN_VERSION=8
+
+if [[ $MAJOR_VER -lt $MIN_VERSION ]]; then
+  echo "JDK Version: \"${JDK_VERSION}\", the version cannot be lower than 1.8"
+  exit 1
+fi
+
 if [[ -z "$USE_NOHUP" ]]; then
   if $hpux; then
     USE_NOHUP="true"
@@ -257,7 +268,6 @@ fi
 
 BASH_UTIL="org.apache.streampark.console.base.util.BashJavaUtils"
 APP_MAIN="org.apache.streampark.console.StreamParkConsoleBootstrap"
-SERVER_PORT=$($_RUNJAVA -cp "$APP_LIB/*" $BASH_UTIL --get_yaml "server.port" "$CONFIG")
 JVM_OPTS_FILE=${APP_HOME}/bin/jvm_opts.sh
 
 JVM_ARGS=""
@@ -270,11 +280,13 @@ if [[ -f $JVM_OPTS_FILE ]]; then
   done < $JVM_OPTS_FILE
 fi
 
-JVM_OPTS=${JVM_OPTS:-"${JVM_ARGS}"}
-JVM_OPTS="$JVM_OPTS -XX:HeapDumpPath=${APP_HOME}/logs/dump.hprof"
-JVM_OPTS="$JVM_OPTS -Xloggc:${APP_HOME}/logs/gc.log"
-DEBUG_OPTS=""
+JAVA_OPTS=${JAVA_OPTS:-"${JVM_ARGS}"}
+JAVA_OPTS="$JAVA_OPTS -XX:HeapDumpPath=${APP_HOME}/logs/dump.hprof"
+JAVA_OPTS="$JAVA_OPTS -Xloggc:${APP_HOME}/logs/gc.log"
+[[ $MAJOR_VER -gt $MIN_VERSION ]] && JAVA_OPTS="$JAVA_OPTS --add-opens java.base/jdk.internal.loader=ALL-UNNAMED --add-opens jdk.zipfs/jdk.nio.zipfs=ALL-UNNAMED"
+[[ $MAJOR_VER -ge 17 ]] && JAVA_OPTS="$JAVA_OPTS -Djava.security.manager=allow"
 
+SERVER_PORT=$($_RUNJAVA -cp "$APP_LIB/*" $BASH_UTIL --get_yaml "server.port" "$CONFIG")
 # ----- Execute The Requested Command -----------------------------------------
 
 print_logo() {
@@ -399,18 +411,13 @@ start() {
     APP_CLASSPATH+=":${HADOOP_HOME}/etc/hadoop"
   fi
 
-  # shellcheck disable=SC2034
-  # shellcheck disable=SC2006
-  # shellcheck disable=SC2155
-  local JAVA_OPTS="$JVM_OPTS $DEBUG_OPTS"
-
   echo_g "JAVA_OPTS:  ${JAVA_OPTS}"
 
   eval $NOHUP $_RUNJAVA $JAVA_OPTS \
     -classpath "$APP_CLASSPATH" \
     -Dapp.home="${APP_HOME}" \
-    -Dlogging.config="${APP_CONF}/logback-spring.xml" \
     -Djava.io.tmpdir="$APP_TMPDIR" \
+    -Dlogging.config="${APP_CONF}/logback-spring.xml" \
     $APP_MAIN "$@" >> "$APP_OUT" 2>&1 "&"
 
     local PID=$!
@@ -468,31 +475,17 @@ start_docker() {
     APP_CLASSPATH+=":${HADOOP_HOME}/etc/hadoop"
   fi
 
-  JVM_OPTS="${JVM_OPTS} -XX:-UseContainerSupport"
-
-  local JAVA_OPTS="$JVM_OPTS $DEBUG_OPTS"
+  JAVA_OPTS="$JAVA_OPTS -XX:-UseContainerSupport"
 
   echo_g "JAVA_OPTS:  ${JAVA_OPTS}"
 
   $_RUNJAVA $JAVA_OPTS \
     -classpath "$APP_CLASSPATH" \
     -Dapp.home="${APP_HOME}" \
-    -Dlogging.config="${APP_CONF}/logback-spring.xml" \
     -Djava.io.tmpdir="$APP_TMPDIR" \
+    -Dlogging.config="${APP_CONF}/logback-spring.xml" \
     $APP_MAIN
 
-}
-
-debug() {
-  # shellcheck disable=SC2236
-  if [[ ! -n "$DEBUG_PORT" ]]; then
-    echo_r "If start with debug mode,Please fill in the debug port like: bash streampark.sh debug 10002 "
-  else
-    DEBUG_OPTS="""
-    -Xdebug  -Xrunjdwp:transport=dt_socket,server=y,suspend=n,address=$DEBUG_PORT
-    """
-    start
-  fi
 }
 
 # shellcheck disable=SC2120
@@ -566,10 +559,6 @@ restart() {
 
 main() {
   case "$1" in
-    "debug")
-        DEBUG_PORT=$2
-        debug
-        ;;
     "start")
         shift
         start "$@"
@@ -599,7 +588,6 @@ main() {
         echo_w "  stop                      Stop StreamPark, wait up to 3 seconds and then use kill -KILL if still running"
         echo_w "  start_docker              start in docker or k8s mode"
         echo_w "  status                    StreamPark status"
-        echo_w "  debug                     StreamPark start with debug mode,start debug mode, like: bash streampark.sh debug 10002"
         echo_w "  restart \$conf            restart StreamPark with application config."
         exit 0
         ;;

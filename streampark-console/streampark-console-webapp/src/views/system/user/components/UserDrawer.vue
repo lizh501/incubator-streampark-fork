@@ -26,7 +26,10 @@
       <Icon icon="ant-design:user-add-outlined" />
       {{ getTitle }}
     </template>
-    <BasicForm @register="registerForm" />
+
+    <div class="mt-3">
+      <BasicForm @register="registerForm" />
+    </div>
   </BasicDrawer>
 </template>
 <script lang="ts">
@@ -50,10 +53,10 @@
       const [registerForm, { resetFields, setFieldsValue, updateSchema, validate, clearValidate }] =
         useForm({
           colon: true,
-          labelWidth: 120,
           schemas: formSchema(unref(formType)),
           showActionButtonGroup: false,
-          baseColProps: { lg: 22, md: 22 },
+          layout: 'vertical',
+          baseColProps: { span: 20, offset: 2 },
         });
 
       const [registerDrawer, { setDrawerProps, closeDrawer }] = useDrawerInner(async (data) => {

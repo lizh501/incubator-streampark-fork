@@ -18,8 +18,10 @@ import { AxiosResponse } from 'axios';
 import { FlinkCreate, FlinkEnv } from './types/flinkEnv.type';
 import { Result } from '/#/axios';
 import { defHttp } from '/@/utils/http/axios';
+import { BasicTableParams } from '/@/api/model/baseModel';
 
 enum FLINK_API {
+  PAGE = '/flink/env/page',
   LIST = '/flink/env/list',
   CREATE = '/flink/env/create',
   DELETE = '/flink/env/delete',
@@ -30,13 +32,26 @@ enum FLINK_API {
   DEFAULT = '/flink/env/default',
   VALIDITY = '/flink/env/validity',
 }
+
 /**
  * flink environment data
  * @returns Promise<FlinkEnv[]>
  */
-export function fetchFlinkEnv() {
+export function pageFlinkEnv(data: BasicTableParams) {
+  return defHttp.post<FlinkEnv[]>({
+    url: FLINK_API.PAGE,
+    data,
+  });
+}
+
+/**
+ * flink environment data
+ * @returns Promise<FlinkEnv[]>
+ */
+export function fetchFlinkEnv(data?: BasicTableParams) {
   return defHttp.post<FlinkEnv[]>({
     url: FLINK_API.LIST,
+    data,
   });
 }
 

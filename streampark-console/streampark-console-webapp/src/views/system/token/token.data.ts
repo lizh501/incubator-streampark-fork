@@ -83,10 +83,14 @@ export const columns: BasicColumn[] = [
 
 export const searchFormSchema: FormSchema[] = [
   {
-    field: 'user',
-    label: t('system.token.table.userName'),
+    field: 'username',
+    label: '',
     component: 'Input',
-    colProps: { span: 8 },
+    componentProps: {
+      placeholder: t('system.user.searchByName'),
+      allowClear: true,
+    },
+    colProps: { span: 6 },
   },
 ];
 
@@ -102,6 +106,7 @@ export const formSchema: FormSchema[] = [
       resultField: 'records',
       labelField: 'username',
       valueField: 'userId',
+      getPopupContainer: () => document.body,
     },
     rules: [{ required: true, message: t('system.token.selectUserAlertMessage'), trigger: 'blur' }],
   },

@@ -33,7 +33,7 @@ public interface SavepointService extends IService<Savepoint> {
 
   Savepoint getLatest(Long id);
 
-  void trigger(Long appId, @Nullable String savepointPath);
+  void trigger(Long appId, @Nullable String savepointPath) throws Exception;
 
   Boolean delete(Long id, Application application) throws InternalException;
 
@@ -42,4 +42,6 @@ public interface SavepointService extends IService<Savepoint> {
   void removeApp(Application application);
 
   String getSavePointPath(Application app) throws Exception;
+
+  String processPath(String path, String jobName, Long jobId);
 }

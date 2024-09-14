@@ -17,6 +17,7 @@
 
 package org.apache.streampark.console.core.controller;
 
+import org.apache.streampark.console.base.domain.RestRequest;
 import org.apache.streampark.console.base.domain.RestResponse;
 import org.apache.streampark.console.base.exception.InternalException;
 import org.apache.streampark.console.core.bean.ResponseResult;
@@ -26,6 +27,7 @@ import org.apache.streampark.console.core.service.ServiceHelper;
 
 import org.apache.shiro.authz.annotation.RequiresPermissions;
 
+import com.baomidou.mybatisplus.core.metadata.IPage;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.validation.annotation.Validated;
@@ -44,6 +46,12 @@ public class FlinkClusterController {
   @Autowired private FlinkClusterService flinkClusterService;
 
   @Autowired private ServiceHelper serviceHelper;
+
+  @PostMapping("page")
+  public RestResponse findPage(FlinkCluster flinkCluster, RestRequest restRequest) {
+    IPage<FlinkCluster> flinkClusters = flinkClusterService.findPage(flinkCluster, restRequest);
+    return RestResponse.success(flinkClusters);
+  }
 
   @PostMapping("list")
   public RestResponse list() {

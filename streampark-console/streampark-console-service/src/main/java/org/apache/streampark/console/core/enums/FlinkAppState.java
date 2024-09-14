@@ -127,10 +127,14 @@ public enum FlinkAppState implements Serializable {
   }
 
   public static boolean isEndState(Integer appState) {
+    if (appState == null) {
+      return false;
+    }
     FlinkAppState flinkAppState = FlinkAppState.of(appState);
     return FlinkAppState.CANCELED == flinkAppState
         || FlinkAppState.FAILED == flinkAppState
         || FlinkAppState.KILLED == flinkAppState
+        || FlinkAppState.ADDED == flinkAppState
         || FlinkAppState.FINISHED == flinkAppState
         || FlinkAppState.SUCCEEDED == flinkAppState
         || FlinkAppState.LOST == flinkAppState
